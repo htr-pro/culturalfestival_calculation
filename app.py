@@ -9,9 +9,9 @@ st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered
 def auto_save_and_load():
     js_code = """
     <script>
-    window.saveToBr = (data) => { localStorage.setItem('bunkasai_data_v17', JSON.stringify(data)); };
+    window.saveToBr = (data) => { localStorage.setItem('bunkasai_data_v18', JSON.stringify(data)); };
     setTimeout(() => {
-        const saved = localStorage.getItem('bunkasai_data_v17');
+        const saved = localStorage.getItem('bunkasai_data_v18');
         if (saved) {
             const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
             if (bridge && !bridge.value) {
@@ -28,7 +28,7 @@ def save_trigger(data):
     js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
     components.html(js_code, height=0)
 
-# 3. CSS: レイアウト調整
+# 3. CSS: 裏側のブリッジエリアだけをピンポイントで消去
 st.markdown("""
     <style>
     .main-title { font-size: 1.8rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 20px; }
@@ -36,13 +36,18 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3.5rem; }
     .price-card { background-color: #fef2f2; padding: 25px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; margin: 20px 0; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
-    div[data-testid="stTextArea"] { display: none !important; }
+    
+    /* ↓ aria-label="bridge_area" を持つテキストエリアだけを非表示にする設定 */
+    div[data-testid="stTextArea"]:has(textarea[aria-label="bridge_area"]) {
+        display: none !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 if 'ingredients' not in st.session_state:
     st.session_state.ingredients = []
 
+# 自動保存用の隠しエリア
 bridge_data = st.text_area("bridge_area", key="bridge_area", label_visibility="collapsed")
 if bridge_data and not st.session_state.ingredients:
     try:
@@ -106,7 +111,6 @@ else:
     details = ""
     
     if calc_mode == "まとめてモード":
-        # デフォルト人数を50名に設定
         servings = st.number_input("合計で何人分作りますか？", min_value=1, value=50)
         for item in st.session_state.ingredients:
             total_cost += float(item['price'])
@@ -127,7 +131,6 @@ else:
             u_p = item['price'] / item['vol']
             
             if item['unit'] in ["個", "本", "袋"]:
-                # 整数部分と小数（分数）部分を横並びで入力
                 col_int, col_frac = st.columns(2)
                 iv = col_int.selectbox(f"整数 ({item['unit']})", range(int(item['vol']) + 101), key=f"int_{i}")
                 fk = col_frac.selectbox(f"端数 ({item['unit']})", list(FRACTIONS.keys()), key=f"frac_{i}")
@@ -147,6 +150,7 @@ else:
         <span style="font-size:2.5rem; font-weight:900; color:#ef4444;">{final_price:,.2f} 円</span>
     </div>""", unsafe_allow_html=True)
 
+    # このエリアが復活しました
     summary = f"【原価計算結果】\n{details}💰1人あたり原価: {final_price:,.2f}円"
     st.text_area("結果（コピー用）", value=summary, height=150)
 
