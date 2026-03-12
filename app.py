@@ -5,7 +5,7 @@ import json
 # 1. ページ設定
 st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered")
 
-# 2. CSS: デザインとレイアウトの最適化
+# 2. CSS
 st.markdown("""
     <style>
     :root { --text-color: #1e293b; --bg-color: #ffffff; --box-bg: #f1f5f9; --accent-blue: #3b82f6; }
@@ -19,6 +19,7 @@ st.markdown("""
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
     .item-box { background-color: var(--box-bg); padding: 10px; border-radius: 8px; border-left: 6px solid var(--accent-blue); margin-bottom: 5px; font-weight: bold; color: var(--text-color); }
     .sub-label { font-size: 0.8rem; color: var(--text-color); opacity: 0.8; margin-bottom: 5px; }
+    .price-calc-info { font-size: 0.85rem; color: var(--accent-blue); margin-bottom: 10px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -41,13 +42,21 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
         c1, c2 = st.columns(2)
         unit = c2.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
         
-        # --- 修正: ①は個/本/袋なら整数のみ、それ以外は小数入力 ---
         if unit in ["個", "本", "袋"]:
             vol = c1.number_input("内容量（購入数）", min_value=1, value=10, step=1)
         else:
             vol = c1.number_input("内容量（重さ/量）", min_value=0.1, value=1000.0, step=0.1)
             
-        price = st.number_input("購入金額(円)", min_value=0, value=500)
+        # --- 修正点: 価格の入力方法を選択 ---
+        price_mode = st.radio("価格の入力方法", ["総額で入力", "1単位あたりの価格で入力"], horizontal=True)
+        
+        if price_mode == "総額で入力":
+            price = st.number_input("購入総額(円)", min_value=0, value=500)
+        else:
+            unit_price = st.number_input(f"1{unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
+            price = int(unit_price * vol)
+            st.markdown(f'<div class="price-calc-info">自動計算された総額: {price:,} 円</div>', unsafe_allow_html=True)
+
         if st.form_submit_button("材料リストに追加"):
             if name:
                 st.session_state.ingredients.append({"name": name, "vol": float(vol), "price": price, "unit": unit})
@@ -59,14 +68,11 @@ if st.session_state.ingredients:
         for i, item in enumerate(st.session_state.ingredients):
             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 0.5])
             new_name = c1.text_input("名前", value=item['name'], key=f"e_n_{i}")
-            
-            # --- 修正: 編集時も単位に合わせて入力を制限 ---
             if item['unit'] in ["個", "本", "袋"]:
                 new_vol = c2.number_input("量", value=int(item['vol']), key=f"e_v_{i}", step=1)
             else:
                 new_vol = c2.number_input("量", value=float(item['vol']), key=f"e_v_{i}", step=0.1)
-                
-            new_price = c3.number_input("価格", value=item['price'], key=f"e_p_{i}")
+            new_price = c3.number_input("価格(総額)", value=int(item['price']), key=f"e_p_{i}")
             c4.write(f"\n{item['unit']}")
             if c5.button("❌", key=f"d_{i}"):
                 st.session_state.ingredients.pop(i)
@@ -99,9 +105,7 @@ else:
         for i, item in enumerate(st.session_state.ingredients):
             st.markdown(f'<div class="item-box notranslate">{item["name"]}</div>', unsafe_allow_html=True)
             u_p = item['price'] / item['vol']
-            
             if item['unit'] in ["個", "本", "袋"]:
-                # --- 修正: ②は「整数」と「端数」で分けるUIを適用 ---
                 col_int, col_frac = st.columns(2)
                 with col_int:
                     st.markdown('<div class="sub-label">整数</div>', unsafe_allow_html=True)
@@ -114,7 +118,6 @@ else:
             else:
                 used = st.number_input(f"使用量 ({item['unit']})", key=f"ind_{i}", min_value=0.0, max_value=float(item['vol']), step=0.1)
                 used_label = str(used)
-                
             item_cost = used * u_p
             total_material_cost += item_cost
             line_details += f"・{item['name']}: {used_label}{item['unit']} ({item_cost:,.2f}円)\n"
