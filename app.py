@@ -81,10 +81,11 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
     # 価格入力方法
     mode_price = st.radio("価格の入力方法", ["総額で入力", f"1{unit}あたりの価格で入力"], horizontal=True)
     
-    if "総額" in mode_price:
+   if "総額" in mode_price:
         price = st.number_input("購入総額 (円)", min_value=0, value=0, step=1)
     else:
-        unit_price = st.number_input(f"1{unit}あたりの価格 (円)", min_value=0.0, value=0.0, step=0.1)
+        # value=0, step=1 にすることで整数入力に固定します
+        unit_price = st.number_input(f"1{unit}あたりの価格 (円)", min_value=0, value=0, step=1)
         price = int(unit_price * vol)
         st.info(f"💡 計算された総額: {price:,} 円")
 
