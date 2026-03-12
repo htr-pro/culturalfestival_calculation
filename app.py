@@ -5,40 +5,15 @@ import json
 # 1. ページ設定
 st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered")
 
-# 2. CSS: 文字サイズを適正化（vw単位を調整）
+# 2. CSS: 文字サイズとデザインの微調整
 st.markdown("""
     <style>
     :root { --text-color: #1e293b; --bg-color: #ffffff; --box-bg: #f1f5f9; --accent-blue: #3b82f6; }
     @media (prefers-color-scheme: dark) { :root { --text-color: #f1f5f9; --bg-color: #0f172a; --box-bg: #1e293b; --accent-blue: #60a5fa; } }
-    
     .notranslate { translate: no !important; }
-    
-    /* タイトルのサイズを調整 (7vw → 6vw) */
-    .main-title { 
-        font-size: 6vw !important; 
-        text-align: center; 
-        color: var(--accent-blue); 
-        font-weight: 900; 
-        margin-bottom: 15px; 
-    }
-    
-    /* 見出しのサイズを調整 (5.5vw → 4.5vw) */
-    .section-title { 
-        font-size: 4.5vw !important; 
-        font-weight: 800; 
-        color: var(--text-color); 
-        border-bottom: 3px solid var(--accent-blue); 
-        display: inline-block; 
-        margin-top: 15px;
-        margin-bottom: 10px;
-    }
-    
-    /* PC表示での最大サイズ制限 */
-    @media (min-width: 600px) { 
-        .main-title { font-size: 2.2rem !important; } 
-        .section-title { font-size: 1.5rem !important; } 
-    }
-    
+    .main-title { font-size: 6vw !important; text-align: center; color: var(--accent-blue); font-weight: 900; margin-bottom: 15px; }
+    .section-title { font-size: 4.5vw !important; font-weight: 800; color: var(--text-color); border-bottom: 3px solid var(--accent-blue); display: inline-block; margin-top: 15px; margin-bottom: 10px; }
+    @media (min-width: 600px) { .main-title { font-size: 2.2rem !important; } .section-title { font-size: 1.5rem !important; } }
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: var(--accent-blue); color: white !important; }
     .price-card { background-color: #fef2f2; padding: 20px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; margin-top: 10px; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
@@ -63,7 +38,7 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
     with st.form(key='reg_form', clear_on_submit=True):
         name = st.text_input("材料名")
         c1, c2 = st.columns(2)
-        vol = c1.number_input("内容量（購入数/量）", min_value=1, value=10)
+        vol = c1.number_input("内容量（購入数/量）", min_value=1.0, value=10.0, step=0.1)
         unit = c2.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
         price = st.number_input("購入金額(円)", min_value=0, value=500)
         if st.form_submit_button("材料リストに追加"):
@@ -77,7 +52,7 @@ if st.session_state.ingredients:
         for i, item in enumerate(st.session_state.ingredients):
             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 0.5])
             new_name = c1.text_input("名前", value=item['name'], key=f"e_n_{i}")
-            new_vol = c2.number_input("量", value=item['vol'], key=f"e_v_{i}")
+            new_vol = c2.number_input("量", value=float(item['vol']), key=f"e_v_{i}", step=0.1)
             new_price = c3.number_input("価格", value=item['price'], key=f"e_p_{i}")
             c4.write(f"\n{item['unit']}")
             if c5.button("❌", key=f"d_{i}"):
@@ -103,7 +78,9 @@ else:
         for i, item in enumerate(st.session_state.ingredients):
             st.markdown(f'<div class="item-box notranslate">{item["name"]} (全量: {item["vol"]}{item["unit"]})</div>', unsafe_allow_html=True)
             total_material_cost += float(item['price'])
-            line_details += f"・{item['name']}: {item['vol']}{item['unit']} (全量 {item['price']:,}円)\n"
+            # 1人あたりの分量を計算
+            per_person_vol = item['vol'] / serving_count
+            line_details += f"・{item['name']}: 全量{item['vol']}{item['unit']} (1人当り:{per_person_vol:,.2f}{item['unit']})\n"
     else:
         serving_count = 1
         FRACTION_OPTIONS = {"なし (0)": 0.0, "1/4 (0.25)": 0.25, "1/3 (0.33)": 0.33, "1/2 (0.5)": 0.5, "2/3 (0.66)": 0.66, "3/4 (0.75)": 0.75}
@@ -131,7 +108,9 @@ else:
     summary = f"【文化祭原価計算結果】\nモード: {mode}\n"
     if mode == "まとめてモード": summary += f"予定数: {serving_count}人分\n"
     summary += f"{line_details}\n💰1人あたり原価: {final_cost:,.2f}円"
-    st.text_area("LINE貼り付け用テキスト", value=summary, height=200)
+    
+    # ラベルを「貼り付けテキスト」に変更
+    st.text_area("貼り付けテキスト", value=summary, height=200)
 
     if st.button("🚨 全データを消去（リセット）"):
         st.session_state.ingredients = []
