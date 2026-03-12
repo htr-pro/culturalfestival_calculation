@@ -1,163 +1,189 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import json
-
-# 1. ページ設定
-st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered")
-
-# 2. JavaScript: 保存と読み込みの同期を強化
-def storage_manager():
-    # localStorageからデータを読み出し、bridge_areaに流し込むJavaScript
-    # Streamlitの再描画に負けないよう、少ししつこく読み込みを試行します
-    js_code = """
-    <script>
-    const STORAGE_KEY = 'bunkasai_data_v19';
-    
-    // 保存関数
-    window.saveToBr = (data) => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    };
-
-    // 読み込み関数
-    function loadData() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
-        if (saved && bridge && !bridge.value) {
-            bridge.value = saved;
-            bridge.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    }
-
-    // 起動時と定期的にチェック
-    setTimeout(loadData, 300);
-    setTimeout(loadData, 1000); 
-    </script>
-    """
-    components.html(js_code, height=0)
-
-def save_trigger(data):
-    js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
-    components.html(js_code, height=0)
-
-# 3. CSS
-st.markdown("""
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文化祭原価計算アプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-    .main-title { font-size: 1.8rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 20px; }
-    .section-title { font-size: 1.2rem !important; font-weight: 800; border-left: 5px solid #3b82f6; padding-left: 10px; margin-bottom: 15px; }
-    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3.5rem; }
-    .price-card { background-color: #fef2f2; padding: 25px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; margin: 20px 0; }
-    @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
-    div[data-testid="stTextArea"]:has(textarea[aria-label="bridge_area"]) { display: none !important; }
+        body { background-color: #f1f5f9; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+        label { display: block; font-size: 0.875rem; font-weight: 700; color: #475569; margin-bottom: 0.25rem; }
+        input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0.5rem; margin-bottom: 1rem; }
+        .btn-blue { background-color: #3b82f6; color: white; font-weight: 700; width: 100%; padding: 0.75rem; border-radius: 8px; transition: 0.2s; }
+        .btn-blue:hover { background-color: #2563eb; }
     </style>
-    """, unsafe_allow_html=True)
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-black text-center text-blue-600 mb-6">🎡 文化祭原価計算</h1>
 
-# セッション状態の初期化
-if 'ingredients' not in st.session_state:
-    st.session_state.ingredients = []
+        <div class="card">
+            <h2 class="text-lg font-bold border-l-4 border-blue-500 pl-2 mb-4">① 材料を登録</h2>
+            <label>材料名</label>
+            <input type="text" id="name" placeholder="例：鶏もも肉">
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label>内容量</label>
+                    <input type="number" id="vol" value="100">
+                </div>
+                <div>
+                    <label>単位</label>
+                    <select id="unit">
+                        <option>個</option><option>本</option><option>袋</option>
+                        <option selected>g</option><option>kg</option><option>ml</option><option>l</option>
+                    </select>
+                </div>
+            </div>
 
-# 自動保存用の隠しエリア
-bridge_data = st.text_area("bridge_area", key="bridge_area", label_visibility="collapsed")
+            <label>購入総額 (円)</label>
+            <input type="number" id="price" value="500">
+            
+            <button onclick="addIngredient()" class="btn-blue">材料リストに追加</button>
+        </div>
 
-# 読み込み処理：隠しエリアに値が入ったらセッションに同期
-if bridge_data:
-    try:
-        loaded_data = json.loads(bridge_data)
-        if not st.session_state.ingredients: # 空の時だけ上書き
-            st.session_state.ingredients = loaded_data
-            st.rerun()
-    except:
-        pass
+        <div id="listSection" class="card hidden">
+            <h2 class="text-lg font-bold border-l-4 border-blue-500 pl-2 mb-4">② 登録済みの材料</h2>
+            <div id="ingredientList" class="space-y-2"></div>
+        </div>
 
-storage_manager()
+        <div class="card">
+            <h2 class="text-lg font-bold border-l-4 border-blue-500 pl-2 mb-4">③ 原価を計算</h2>
+            <label>計算モード</label>
+            <div class="flex gap-4 mb-4">
+                <label class="flex items-center font-normal"><input type="radio" name="mode" value="per" checked class="w-4 h-4 mr-2" onclick="renderCalc()"> 1人ずつ</label>
+                <label class="flex items-center font-normal"><input type="radio" name="mode" value="total" class="w-4 h-4 mr-2" onclick="renderCalc()"> まとめて</label>
+            </div>
 
-st.markdown('<h1 class="main-title">🎡 文化祭原価計算アプリ</h1>', unsafe_allow_html=True)
+            <div id="calcArea"></div>
 
-# --- ① 材料を登録 ---
-st.markdown('<div class="section-title">① 材料を登録</div>', unsafe_allow_html=True)
+            <div id="resultCard" class="mt-6 p-6 bg-red-50 border-2 border-red-500 rounded-2xl text-center hidden">
+                <span class="text-red-500 font-bold">1人あたりの原価</span><br>
+                <span id="finalPrice" class="text-4xl font-black text-red-600">0.00</span> <span class="text-red-600 font-bold">円</span>
+            </div>
+        </div>
 
-with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
-    name = st.text_input("材料名", placeholder="例：鶏もも肉")
-    col_v, col_u = st.columns([2, 1])
-    unit = col_u.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
-    
-    if unit in ["個", "本", "袋"]:
-        vol = col_v.number_input(f"内容量（{unit}数）", min_value=1, value=1, step=1)
-    else:
-        vol = col_v.number_input(f"内容量（総量）", min_value=0.1, value=100.0, step=0.1)
-    
-    mode_price = st.radio("価格の入力方法", ["総額で入力", f"1{unit}あたりの価格で入力"], horizontal=True)
-    
-    if "総額" in mode_price:
-        final_price_val = st.number_input("購入総額 (円)", min_value=0, value=0, step=1)
-    else:
-        unit_price = st.number_input(f"1{unit}あたりの価格 (円)", min_value=0, value=0, step=1)
-        final_price_val = int(unit_price * vol)
-        st.info(f"💡 計算された総額: {final_price_val:,} 円")
+        <button onclick="resetAll()" class="text-sm text-gray-400 w-full hover:text-red-500 transition">🚨 全データを消去してリセット</button>
+    </div>
 
-    if st.button("材料リストに追加"):
-        if name:
-            st.session_state.ingredients.append({"name": name, "vol": float(vol), "price": int(final_price_val), "unit": unit})
-            save_trigger(st.session_state.ingredients)
-            st.rerun()
+    <script>
+        let ingredients = JSON.parse(localStorage.getItem('bunkasai_data')) || [];
 
-# --- ② 編集・確認 ---
-if st.session_state.ingredients:
-    with st.expander("📝 登録済みの材料を編集・削除"):
-        for i, item in enumerate(st.session_state.ingredients):
-            c1, c2, c3, c4 = st.columns([2, 1, 1, 0.5])
-            c1.write(f"**{item['name']}**")
-            c2.write(f"{item['vol']}{item['unit']}")
-            c3.write(f"{item['price']}円")
-            if c4.button("❌", key=f"del_{i}"):
-                st.session_state.ingredients.pop(i)
-                save_trigger(st.session_state.ingredients)
-                st.rerun()
+        function save() {
+            localStorage.setItem('bunkasai_data', JSON.stringify(ingredients));
+            renderList();
+            renderCalc();
+        }
 
-# --- ③ 原価計算 ---
-st.markdown('<div class="section-title">② 原価を計算</div>', unsafe_allow_html=True)
+        function addIngredient() {
+            const name = document.getElementById('name').value;
+            const vol = parseFloat(document.getElementById('vol').value);
+            const price = parseInt(document.getElementById('price').value);
+            const unit = document.getElementById('unit').value;
 
-if not st.session_state.ingredients:
-    st.info("材料を登録してください。")
-else:
-    calc_mode = st.radio("計算モード", ["1人あたりの使用量で計算", "まとめてモード"], horizontal=True)
-    total_cost = 0.0
-    details = ""
-    
-    if calc_mode == "まとめてモード":
-        servings = st.number_input("合計で何人分作りますか？", min_value=1, value=50)
-        for item in st.session_state.ingredients:
-            total_cost += float(item['price'])
-            per_use = item['vol'] / servings
-            details += f"・{item['name']}: {item['vol']}{item['unit']} (1人当り:{per_use:,.2f}{item['unit']})\n"
-    else:
-        servings = 1
-        FRACTIONS = {"なし (0)": 0.0, "1/4 (0.25)": 0.25, "1/3 (0.33)": 0.33, "1/2 (0.5)": 0.5, "2/3 (0.66)": 0.66, "3/4 (0.75)": 0.75}
-        for i, item in enumerate(st.session_state.ingredients):
-            st.markdown(f"**{item['name']}** の使用量")
-            u_p = item['price'] / item['vol']
-            if item['unit'] in ["個", "本", "袋"]:
-                col_int, col_frac = st.columns(2)
-                iv = col_int.selectbox(f"整数 ({item['unit']})", range(int(item['vol']) + 101), key=f"int_{i}")
-                fk = col_frac.selectbox(f"端数 ({item['unit']})", list(FRACTIONS.keys()), key=f"frac_{i}")
-                use = float(iv) + FRACTIONS[fk]
-                use_label = f"{iv}と{fk}" if FRACTIONS[fk] > 0 else f"{iv}"
-            else:
-                use = st.number_input(f"使用量 ({item['unit']})", key=f"u_{i}", min_value=0.0, step=0.1)
-                use_label = f"{use}{item['unit']}"
-            item_cost = use * u_p
-            total_cost += item_cost
-            details += f"・{item['name']}: {use_label} ({item_cost:,.1f}円)\n"
+            if (!name) return alert("材料名を入力してください");
+            ingredients.push({ name, vol, price, unit });
+            save();
+            document.getElementById('name').value = "";
+        }
 
-    final_price = total_cost / servings
-    st.markdown(f"""<div class="price-card">
-        <span style="font-size:1rem; color:#ef4444; font-weight:bold;">1人あたりの原価</span><br>
-        <span style="font-size:2.5rem; font-weight:900; color:#ef4444;">{final_price:,.2f} 円</span>
-    </div>""", unsafe_allow_html=True)
+        function removeIngredient(index) {
+            ingredients.splice(index, 1);
+            save();
+        }
 
-    summary = f"【原価計算結果】\n{details}💰1人あたり原価: {final_price:,.2f}円"
-    st.text_area("結果（コピー用）", value=summary, height=150)
+        function renderList() {
+            const list = document.getElementById('ingredientList');
+            const section = document.getElementById('listSection');
+            if (ingredients.length === 0) {
+                section.classList.add('hidden');
+                return;
+            }
+            section.classList.remove('hidden');
+            list.innerHTML = ingredients.map((item, i) => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                    <span><b>${item.name}</b> (${item.vol}${item.unit} / ${item.price}円)</span>
+                    <button onclick="removeIngredient(${i})" class="text-red-500 font-bold px-2">×</button>
+                </div>
+            `).join('');
+        }
 
-    if st.button("🚨 全データを消去してリセット"):
-        st.session_state.ingredients = []
-        save_trigger([])
-        st.rerun()
+        function renderCalc() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const area = document.getElementById('calcArea');
+            const resultCard = document.getElementById('resultCard');
+
+            if (ingredients.length === 0) {
+                area.innerHTML = "<p class='text-gray-400'>材料を登録してください</p>";
+                resultCard.classList.add('hidden');
+                return;
+            }
+            resultCard.classList.remove('hidden');
+
+            if (mode === 'total') {
+                area.innerHTML = `
+                    <label>合計何人分作りますか？</label>
+                    <input type="number" id="servings" value="50" oninput="calculate()">
+                `;
+            } else {
+                area.innerHTML = ingredients.map((item, i) => `
+                    <div class="mb-4 p-3 border rounded">
+                        <label class="text-blue-600">${item.name} の使用量</label>
+                        ${['個', '本', '袋'].includes(item.unit) ? `
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="int_${i}" onchange="calculate()">
+                                    ${Array.from({length: 101}, (_, n) => `<option value="${n}">${n}${item.unit}</option>`).join('')}
+                                </select>
+                                <select id="frac_${i}" onchange="calculate()">
+                                    <option value="0">端数なし</option>
+                                    <option value="0.25">1/4</option>
+                                    <option value="0.33">1/3</option>
+                                    <option value="0.5">1/2</option>
+                                    <option value="0.66">2/3</option>
+                                    <option value="0.75">3/4</option>
+                                </select>
+                            </div>
+                        ` : `
+                            <input type="number" id="use_${i}" value="0" step="0.1" oninput="calculate()">
+                        `}
+                    </div>
+                `).join('');
+            }
+            calculate();
+        }
+
+        function calculate() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            let total = 0;
+            let servings = 1;
+
+            if (mode === 'total') {
+                servings = parseFloat(document.getElementById('servings').value) || 1;
+                ingredients.forEach(item => total += item.price);
+            } else {
+                ingredients.forEach((item, i) => {
+                    const up = item.price / item.vol;
+                    let used = 0;
+                    if (['個', '本', '袋'].includes(item.unit)) {
+                        used = parseFloat(document.getElementById(`int_${i}`).value) + parseFloat(document.getElementById(`frac_${i}`).value);
+                    } else {
+                        used = parseFloat(document.getElementById(`use_${i}`).value) || 0;
+                    }
+                    total += used * up;
+                });
+            }
+            document.getElementById('finalPrice').innerText = (total / servings).toFixed(2);
+        }
+
+        function resetAll() {
+            if (confirm("全てのデータを消去しますか？")) {
+                ingredients = [];
+                save();
+            }
+        }
+
+        window.onload = () => { renderList(); renderCalc(); };
+    </script>
+</body>
+</html>
