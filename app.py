@@ -10,10 +10,10 @@ def auto_save_and_load():
     js_code = """
     <script>
     window.saveToBr = (data) => {
-        localStorage.setItem('bunkasai_data_v7', JSON.stringify(data));
+        localStorage.setItem('bunkasai_data_v8', JSON.stringify(data));
     };
     setTimeout(() => {
-        const saved = localStorage.getItem('bunkasai_data_v7');
+        const saved = localStorage.getItem('bunkasai_data_v8');
         if (saved) {
             const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
             if (bridge && !bridge.value) {
@@ -30,29 +30,33 @@ def save_trigger(data):
     js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
     components.html(js_code, height=0)
 
-# 3. CSS: 余白の徹底除去とデザイン調整
+# 3. CSS: ラベルの非表示と適切な余白設定
 st.markdown("""
     <style>
-    /* 全体の余白削り */
-    .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+    /* 全体的なフォントと余白 */
+    .main-title { font-size: 1.6rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 15px; }
+    .section-title { font-size: 1.2rem !important; font-weight: 800; border-bottom: 3px solid #3b82f6; display: inline-block; margin-top: 10px; margin-bottom: 15px; }
     
-    .main-title { font-size: 1.6rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 5px; }
-    .section-title { font-size: 1.2rem !important; font-weight: 800; border-bottom: 3px solid #3b82f6; display: inline-block; margin-top: 5px; margin-bottom: 10px; }
-    
-    /* フォーム風の枠 */
+    /* フォームの枠と余白 */
     .custom-form { 
-        border: 1px solid #e2e8f0; padding: 15px; border-radius: 15px; background-color: #f8fafc; margin-bottom: 10px;
+        border: 1px solid #e2e8f0; padding: 25px; border-radius: 15px; background-color: #f8fafc; margin-bottom: 20px;
     }
     @media (prefers-color-scheme: dark) { 
         .custom-form { border-color: #334155; background-color: #1e293b; }
     }
 
-    /* 謎のスペース（ラベル余白）を消す */
-    div[data-testid="stVerticalBlock"] > div { margin-top: -10px !important; }
-    label[data-testid="stWidgetLabel"] { margin-bottom: -5px !important; }
+    /* 単位選択のラベルを完全に消してスペースを詰める */
+    div[data-testid="stColumn"]:nth-child(2) label {
+        display: none !important;
+    }
 
-    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; }
-    .price-card { background-color: #fef2f2; padding: 15px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; }
+    /* 項目間の程よいスペース */
+    .stNumberInput, .stTextInput, .stRadio {
+        margin-bottom: 15px !important;
+    }
+
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3rem; }
+    .price-card { background-color: #fef2f2; padding: 20px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
     
     /* 隠しエリア */
@@ -74,25 +78,22 @@ auto_save_and_load()
 
 st.markdown('<h1 class="main-title">🎡 文化祭原価計算アプリ</h1>', unsafe_allow_html=True)
 
-# --- ① 材料を登録・編集 ---
+# --- ① 材料を登録 ---
 st.markdown('<div class="section-title">① 材料を登録・編集する</div>', unsafe_allow_html=True)
 
 with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
     st.markdown('<div class="custom-form">', unsafe_allow_html=True)
     
-    # 項目間の隙間を詰めるために、各ウィジェットを直接配置
     name = st.text_input("材料名", placeholder="例：鶏もも肉")
     
     col_vol, col_unit = st.columns([2, 1])
-    # 単位のラベルを空にすることでスペースを最小化
-    selected_unit = col_unit.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
+    # 単位のラベルをCSSで消すため、横に並べる
+    selected_unit = col_unit.selectbox("単位（非表示ラベル）", ["個", "本", "袋", "g", "kg", "ml", "l"])
     
     if selected_unit in ["個", "本", "袋"]:
         vol = col_vol.number_input(f"内容量（{selected_unit}数）", min_value=1, value=10, step=1)
     else:
-        vol = col_vol.number_input(f"内容量（合計）", min_value=0.1, value=1000.0, step=0.1)
-    
-    st.markdown("<div style='margin: 10px 0; border-top: 1px solid #ddd;'></div>", unsafe_allow_html=True)
+        vol = col_vol.number_input(f"内容量（総量）", min_value=0.1, value=1000.0, step=0.1)
     
     price_mode = st.radio(
         "価格の入力方法", 
@@ -103,10 +104,11 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
     if "総額" in price_mode:
         price = st.number_input("購入総額(円)", min_value=0, value=500, step=1)
     else:
-        u_p = st.number_input(f"1{selected_unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
-        price = int(u_p * vol)
-        st.info(f"➡ 総額: {price:,} 円")
+        u_price = st.number_input(f"1{selected_unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
+        price = int(u_price * vol)
+        st.info(f"💡 自動計算された総額: {price:,} 円")
 
+    st.write("") # 少し余白
     if st.button("材料リストに追加"):
         if name:
             st.session_state.ingredients.append({"name": name, "vol": float(vol), "price": int(price), "unit": selected_unit})
@@ -144,24 +146,24 @@ else:
     line_details = ""
     
     if mode == "まとめてモード":
-        serving_count = st.number_input("合計何人分？", min_value=1, value=50)
+        serving_count = st.number_input("合計何人分作る？", min_value=1, value=50)
         for i, item in enumerate(st.session_state.ingredients):
             st.markdown(f'<b>・{item["name"]}</b> ({item["vol"]}{item["unit"]})', unsafe_allow_html=True)
             total_material_cost += float(item['price'])
-            per_p = item['vol'] / serving_count
-            line_details += f"・{item['name']}: 全量{item['vol']}{item['unit']} (1人当り:{per_p:,.2f}{item['unit']})\n"
+            p_p = item['vol'] / serving_count
+            line_details += f"・{item['name']}: 全量{item['vol']}{item['unit']} (1人当り:{p_p:,.2f}{item['unit']})\n"
     else:
         serving_count = 1
-        FRACTION_OPTIONS = {"なし (0)": 0.0, "1/4 (0.25)": 0.25, "1/3 (0.33)": 0.33, "1/2 (0.5)": 0.5, "2/3 (0.66)": 0.66, "3/4 (0.75)": 0.75}
+        FRACTIONS = {"なし (0)": 0.0, "1/4 (0.25)": 0.25, "1/3 (0.33)": 0.33, "1/2 (0.5)": 0.5, "2/3 (0.66)": 0.66, "3/4 (0.75)": 0.75}
         for i, item in enumerate(st.session_state.ingredients):
             st.write(f"**{item['name']}**")
             u_p = item['price'] / item['vol']
             if item['unit'] in ["個", "本", "袋"]:
                 col_i, col_f = st.columns(2)
                 iv = col_i.selectbox("整数", range(int(item['vol']) + 1), key=f"int_{i}")
-                fk = col_f.selectbox("端数", list(FRACTION_OPTIONS.keys()), key=f"frac_{i}")
-                used = float(iv) + FRACTION_OPTIONS[fk]
-                used_l = f"{iv}と{fk}" if FRACTION_OPTIONS[fk] > 0 else f"{iv}"
+                fk = col_f.selectbox("端数", list(FRACTIONS.keys()), key=f"frac_{i}")
+                used = float(iv) + FRACTIONS[fk]
+                used_l = f"{iv}と{fk}" if FRACTIONS[fk] > 0 else f"{iv}"
             else:
                 used = st.number_input(f"使用量 ({item['unit']})", key=f"ind_{i}", min_value=0.0, max_value=float(item['vol']), step=0.1)
                 used_l = str(used)
@@ -170,13 +172,13 @@ else:
             line_details += f"・{item['name']}: {used_l}{item['unit']} ({item_c:,.2f}円)\n"
 
     final_cost = total_material_cost / serving_count
-    st.markdown(f"""<div class="price-card">💰 1人あたりの原価<br><span style="font-size: 1.8rem; font-weight: 900; color: #ef4444;">{final_cost:,.2f} 円</span><br>(総額 {total_material_cost:,.0f}円 ÷ {serving_count}人分)</div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="price-card">💰 1人あたりの原価<br><span style="font-size: 2rem; font-weight: 900; color: #ef4444;">{final_cost:,.2f} 円</span><br>(総額 {total_material_cost:,.0f}円 ÷ {serving_count}人分)</div>""", unsafe_allow_html=True)
 
     st.write(" ")
     summary = f"【文化祭原価計算結果】\nモード: {mode}\n予定数: {serving_count}人分\n{line_details}\n💰1人あたり原価: {final_cost:,.2f}円"
     st.text_area("共有用テキスト", value=summary, height=150)
 
-    if st.button("🚨 全データを消去"):
+    if st.button("🚨 全データをリセット"):
         st.session_state.ingredients = []
         save_trigger([])
         st.rerun()
