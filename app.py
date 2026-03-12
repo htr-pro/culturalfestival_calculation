@@ -10,10 +10,10 @@ def auto_save_and_load():
     js_code = """
     <script>
     window.saveToBr = (data) => {
-        localStorage.setItem('bunkasai_data_v4', JSON.stringify(data));
+        localStorage.setItem('bunkasai_data_v5', JSON.stringify(data));
     };
     setTimeout(() => {
-        const saved = localStorage.getItem('bunkasai_data_v4');
+        const saved = localStorage.getItem('bunkasai_data_v5');
         if (saved) {
             const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
             if (bridge && !bridge.value) {
@@ -30,7 +30,7 @@ def save_trigger(data):
     js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
     components.html(js_code, height=0)
 
-# 3. CSS: スタイル
+# 3. CSS
 st.markdown("""
     <style>
     .main-title { font-size: 1.6rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 5px; }
@@ -39,6 +39,8 @@ st.markdown("""
     .price-card { background-color: #fef2f2; padding: 15px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
     div[data-testid="stTextArea"] { display: none !important; }
+    .unit-selector-box { background-color: #e2e8f0; padding: 10px; border-radius: 10px; margin-bottom: -20px; }
+    @media (prefers-color-scheme: dark) { .unit-selector-box { background-color: #334155; } }
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,29 +63,32 @@ st.markdown('<h1 class="main-title">🎡 文化祭原価計算アプリ</h1>', u
 st.markdown('<div class="section-title">① 材料を登録・編集する</div>', unsafe_allow_html=True)
 
 with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
+    # 連動を機能させるため、単位選択をフォームの外に出します
+    st.write("まず単位を選んでください：")
+    selected_unit = st.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"], key="global_unit_selector", label_visibility="collapsed")
+    
     with st.form(key='reg_form', clear_on_submit=True):
-        name = st.text_input("材料名")
-        col_vol, col_unit = st.columns([2, 1])
-        selected_unit = col_unit.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
+        name = st.text_input("材料名", placeholder="例：鶏もも肉")
         
-        # 内容量の入力（単位によってステップを切り替え）
+        # 内容量の入力
         if selected_unit in ["個", "本", "袋"]:
-            vol = col_vol.number_input(f"内容量（購入{selected_unit}数）", min_value=1.0, value=10.0, step=1.0)
+            vol = st.number_input(f"内容量（購入{selected_unit}数）", min_value=1.0, value=10.0, step=1.0)
         else:
-            vol = col_vol.number_input(f"内容量（総{selected_unit}数）", min_value=0.1, value=1000.0, step=0.1)
+            vol = st.number_input(f"内容量（総{selected_unit}数）", min_value=0.1, value=1000.0, step=0.1)
         
-        # 1. 修正：ラジオボタンのラベルを単位連動に
-        price_mode = st.radio("価格の入力方法", ["総額で入力", f"1{selected_unit}あたりの価格で入力"], horizontal=True)
+        # 価格の入力方法（外で選んだ selected_unit と完全連動）
+        price_mode = st.radio(
+            "価格の入力方法", 
+            ["総額で入力", f"1{selected_unit}あたりの価格で入力"], 
+            horizontal=True
+        )
         
-        # 2. 修正：数値入力の型を常にfloat(小数対応)で統一しつつ表示を制御
         if "総額" in price_mode:
             price = st.number_input("購入総額(円)", min_value=0, value=500, step=1)
         else:
-            # 1つ目の登録後も小数入力ができるよう明示的にstep=0.1を指定
             u_p = st.number_input(f"1{selected_unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
             price = int(u_p * vol)
-            # 3. 修正：総額入力時はこのメッセージを出さない
-            st.info(f"➡ 計算された総額: {price:,} 円")
+            st.info(f"➡ {selected_unit}単価から計算した総額: {price:,} 円")
 
         if st.form_submit_button("材料リストに追加"):
             if name:
