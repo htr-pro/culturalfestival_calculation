@@ -5,21 +5,32 @@ import json
 # 1. ページ設定
 st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered")
 
-# 2. JavaScript: 自動保存
-def auto_save_and_load():
+# 2. JavaScript: 保存と読み込みの同期を強化
+def storage_manager():
+    # localStorageからデータを読み出し、bridge_areaに流し込むJavaScript
+    # Streamlitの再描画に負けないよう、少ししつこく読み込みを試行します
     js_code = """
     <script>
-    window.saveToBr = (data) => { localStorage.setItem('bunkasai_data_v18', JSON.stringify(data)); };
-    setTimeout(() => {
-        const saved = localStorage.getItem('bunkasai_data_v18');
-        if (saved) {
-            const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
-            if (bridge && !bridge.value) {
-                bridge.value = saved;
-                bridge.dispatchEvent(new Event('input', { bubbles: true }));
-            }
+    const STORAGE_KEY = 'bunkasai_data_v19';
+    
+    // 保存関数
+    window.saveToBr = (data) => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    };
+
+    // 読み込み関数
+    function loadData() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
+        if (saved && bridge && !bridge.value) {
+            bridge.value = saved;
+            bridge.dispatchEvent(new Event('input', { bubbles: true }));
         }
-    }, 500);
+    }
+
+    // 起動時と定期的にチェック
+    setTimeout(loadData, 300);
+    setTimeout(loadData, 1000); 
     </script>
     """
     components.html(js_code, height=0)
@@ -28,7 +39,7 @@ def save_trigger(data):
     js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
     components.html(js_code, height=0)
 
-# 3. CSS: 裏側のブリッジエリアだけをピンポイントで消去
+# 3. CSS
 st.markdown("""
     <style>
     .main-title { font-size: 1.8rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 20px; }
@@ -36,25 +47,28 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3.5rem; }
     .price-card { background-color: #fef2f2; padding: 25px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; margin: 20px 0; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
-    
-    /* ↓ aria-label="bridge_area" を持つテキストエリアだけを非表示にする設定 */
-    div[data-testid="stTextArea"]:has(textarea[aria-label="bridge_area"]) {
-        display: none !important;
-    }
+    div[data-testid="stTextArea"]:has(textarea[aria-label="bridge_area"]) { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
+# セッション状態の初期化
 if 'ingredients' not in st.session_state:
     st.session_state.ingredients = []
 
 # 自動保存用の隠しエリア
 bridge_data = st.text_area("bridge_area", key="bridge_area", label_visibility="collapsed")
-if bridge_data and not st.session_state.ingredients:
-    try:
-        st.session_state.ingredients = json.loads(bridge_data); st.rerun()
-    except: pass
 
-auto_save_and_load()
+# 読み込み処理：隠しエリアに値が入ったらセッションに同期
+if bridge_data:
+    try:
+        loaded_data = json.loads(bridge_data)
+        if not st.session_state.ingredients: # 空の時だけ上書き
+            st.session_state.ingredients = loaded_data
+            st.rerun()
+    except:
+        pass
+
+storage_manager()
 
 st.markdown('<h1 class="main-title">🎡 文化祭原価計算アプリ</h1>', unsafe_allow_html=True)
 
@@ -63,7 +77,6 @@ st.markdown('<div class="section-title">① 材料を登録</div>', unsafe_allow
 
 with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
     name = st.text_input("材料名", placeholder="例：鶏もも肉")
-    
     col_v, col_u = st.columns([2, 1])
     unit = col_u.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
     
@@ -84,9 +97,8 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
     if st.button("材料リストに追加"):
         if name:
             st.session_state.ingredients.append({"name": name, "vol": float(vol), "price": int(final_price_val), "unit": unit})
-            save_trigger(st.session_state.ingredients); st.rerun()
-        else:
-            st.warning("材料名を入力してください")
+            save_trigger(st.session_state.ingredients)
+            st.rerun()
 
 # --- ② 編集・確認 ---
 if st.session_state.ingredients:
@@ -98,13 +110,14 @@ if st.session_state.ingredients:
             c3.write(f"{item['price']}円")
             if c4.button("❌", key=f"del_{i}"):
                 st.session_state.ingredients.pop(i)
-                save_trigger(st.session_state.ingredients); st.rerun()
+                save_trigger(st.session_state.ingredients)
+                st.rerun()
 
 # --- ③ 原価計算 ---
 st.markdown('<div class="section-title">② 原価を計算</div>', unsafe_allow_html=True)
 
 if not st.session_state.ingredients:
-    st.info("まずは上の「材料を追加する」から材料を登録してください。")
+    st.info("材料を登録してください。")
 else:
     calc_mode = st.radio("計算モード", ["1人あたりの使用量で計算", "まとめてモード"], horizontal=True)
     total_cost = 0.0
@@ -118,18 +131,10 @@ else:
             details += f"・{item['name']}: {item['vol']}{item['unit']} (1人当り:{per_use:,.2f}{item['unit']})\n"
     else:
         servings = 1
-        FRACTIONS = {
-            "なし (0)": 0.0,
-            "1/4 (0.25)": 0.25,
-            "1/3 (0.33)": 0.33,
-            "1/2 (0.5)": 0.5,
-            "2/3 (0.66)": 0.66,
-            "3/4 (0.75)": 0.75
-        }
+        FRACTIONS = {"なし (0)": 0.0, "1/4 (0.25)": 0.25, "1/3 (0.33)": 0.33, "1/2 (0.5)": 0.5, "2/3 (0.66)": 0.66, "3/4 (0.75)": 0.75}
         for i, item in enumerate(st.session_state.ingredients):
             st.markdown(f"**{item['name']}** の使用量")
             u_p = item['price'] / item['vol']
-            
             if item['unit'] in ["個", "本", "袋"]:
                 col_int, col_frac = st.columns(2)
                 iv = col_int.selectbox(f"整数 ({item['unit']})", range(int(item['vol']) + 101), key=f"int_{i}")
@@ -139,7 +144,6 @@ else:
             else:
                 use = st.number_input(f"使用量 ({item['unit']})", key=f"u_{i}", min_value=0.0, step=0.1)
                 use_label = f"{use}{item['unit']}"
-            
             item_cost = use * u_p
             total_cost += item_cost
             details += f"・{item['name']}: {use_label} ({item_cost:,.1f}円)\n"
@@ -150,9 +154,10 @@ else:
         <span style="font-size:2.5rem; font-weight:900; color:#ef4444;">{final_price:,.2f} 円</span>
     </div>""", unsafe_allow_html=True)
 
-    # このエリアが復活しました
     summary = f"【原価計算結果】\n{details}💰1人あたり原価: {final_price:,.2f}円"
     st.text_area("結果（コピー用）", value=summary, height=150)
 
     if st.button("🚨 全データを消去してリセット"):
-        st.session_state.ingredients = []; save_trigger([]); st.rerun()
+        st.session_state.ingredients = []
+        save_trigger([])
+        st.rerun()
