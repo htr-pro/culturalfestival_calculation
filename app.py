@@ -5,18 +5,12 @@ import json
 # 1. ページ設定
 st.set_page_config(page_title="文化祭原価計算アプリ", layout="centered")
 
-# 2. JavaScript: ローカルストレージとのやり取り
+# 2. JavaScript: 保存と復元の橋渡し
 def save_data(data):
-    # ブラウザに保存
-    js_code = f"""
-    <script>
-    localStorage.setItem('bunkasai_data', '{json.dumps(data)}');
-    </script>
-    """
+    js_code = f"<script>localStorage.setItem('bunkasai_data', '{json.dumps(data)}');</script>"
     components.html(js_code, height=0)
 
 def trigger_load():
-    # ブラウザからデータを取得して、Streamlitのテキストエリアに書き戻すためのJS
     js_code = """
     <script>
     const data = localStorage.getItem('bunkasai_data');
@@ -31,19 +25,43 @@ def trigger_load():
     """
     components.html(js_code, height=0)
 
-# CSS
+# 3. CSS: 文字サイズをスマホ向けに固定（vwを使わずpx/remで安定化）
 st.markdown("""
     <style>
     :root { --text-color: #1e293b; --bg-color: #ffffff; --box-bg: #f1f5f9; --accent-blue: #3b82f6; }
     @media (prefers-color-scheme: dark) { :root { --text-color: #f1f5f9; --bg-color: #0f172a; --box-bg: #1e293b; --accent-blue: #60a5fa; } }
+    
     .notranslate { translate: no !important; }
-    .main-title { font-size: 6vw !important; text-align: center; color: var(--accent-blue); font-weight: 900; margin-bottom: 15px; }
-    .section-title { font-size: 4.5vw !important; font-weight: 800; color: var(--text-color); border-bottom: 3px solid var(--accent-blue); display: inline-block; margin-top: 15px; margin-bottom: 10px; }
+    
+    /* タイトルのサイズ（デカすぎ防止） */
+    .main-title { 
+        font-size: 1.8rem !important; 
+        text-align: center; 
+        color: var(--accent-blue); 
+        font-weight: 900; 
+        margin-bottom: 10px; 
+    }
+    
+    /* 見出しのサイズ（適切な強調） */
+    .section-title { 
+        font-size: 1.3rem !important; 
+        font-weight: 800; 
+        color: var(--text-color); 
+        border-bottom: 3px solid var(--accent-blue); 
+        display: inline-block; 
+        margin-top: 15px;
+        margin-bottom: 10px;
+    }
+
+    @media (max-width: 480px) {
+        .main-title { font-size: 1.5rem !important; }
+        .section-title { font-size: 1.1rem !important; }
+    }
+    
     .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: var(--accent-blue); color: white !important; }
     .price-card { background-color: #fef2f2; padding: 20px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; margin-top: 10px; }
-    .item-box { background-color: var(--box-bg); padding: 10px; border-radius: 8px; border-left: 6px solid var(--accent-blue); margin-bottom: 5px; font-weight: bold; }
-    /* 復元用の隠しエリア */
-    .hidden-box { display: none; }
+    @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
+    .item-box { background-color: var(--box-bg); padding: 10px; border-radius: 8px; border-left: 6px solid var(--accent-blue); margin-bottom: 5px; font-weight: bold; color: var(--text-color); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -53,19 +71,18 @@ if 'ingredients' not in st.session_state:
 st.markdown('<div class="notranslate"><h1 class="main-title">🎡 文化祭原価計算アプリ</h1></div>', unsafe_allow_html=True)
 
 # --- データ復元セクション ---
-st.info("💡 リロード後にデータが消えた場合は、下のボタンを押してください。")
+st.info("💡 リロード後にデータが消えた場合は、復元ボタンを押してください。")
 if st.button("🔄 前回のデータを復元する"):
     trigger_load()
-    # 隠しテキストエリアからデータを読み込むための処理
     if "data_bridge" in st.session_state and st.session_state.data_bridge:
         try:
             st.session_state.ingredients = json.loads(st.session_state.data_bridge)
-            st.success("データを復元しました！")
+            st.success("復元完了！")
             st.rerun()
         except:
-            st.error("データの復元に失敗しました。")
+            st.error("データの読み込みに失敗しました。")
 
-# 隠しブリッジ（JavaScriptからデータを受け取る場所）
+# ブリッジ用（見えないように配置）
 st.text_area("data_bridge", key="data_bridge", label_visibility="collapsed")
 
 # --- ① 材料を登録・編集 ---
@@ -73,9 +90,10 @@ st.markdown('<div class="notranslate section-title">① 材料を登録・編集
 
 with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
     with st.form(key='reg_form', clear_on_submit=True):
-        name = st.text_input("材料名")
+        name = st.text_input("材料名", placeholder="例：鶏もも肉")
         col_vol, col_unit = st.columns([2, 1])
         selected_unit = col_unit.selectbox("単位", ["個", "本", "袋", "g", "kg", "ml", "l"])
+        
         if selected_unit in ["個", "本", "袋"]:
             vol = col_vol.number_input("内容量（購入数）", min_value=1, value=10, step=1)
         else:
@@ -87,7 +105,7 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
         else:
             unit_price = st.number_input(f"1{selected_unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
             price = int(unit_price * vol)
-            st.write(f"➡ 総額: {price:,} 円")
+            st.write(f"➡ 自動計算された総額: {price:,} 円")
 
         if st.form_submit_button("材料リストに追加"):
             if name:
@@ -100,7 +118,10 @@ if st.session_state.ingredients:
         for i, item in enumerate(st.session_state.ingredients):
             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 0.5])
             new_name = c1.text_input("名前", value=item['name'], key=f"e_n_{i}")
-            new_vol = c2.number_input("量", value=item['vol'], key=f"e_v_{i}")
+            if item['unit'] in ["個", "本", "袋"]:
+                new_vol = c2.number_input("量", value=int(item['vol']), key=f"e_v_{i}", step=1)
+            else:
+                new_vol = c2.number_input("量", value=float(item['vol']), key=f"e_v_{i}", step=0.1)
             new_price = c3.number_input("価格", value=int(item['price']), key=f"e_p_{i}")
             c4.write(f"\n{item['unit']}")
             if c5.button("❌", key=f"d_{i}"):
@@ -147,7 +168,7 @@ else:
             line_details += f"・{item['name']}: {used_label}{item['unit']} ({item_cost:,.2f}円)\n"
 
     final_cost = total_material_cost / serving_count
-    st.markdown(f"""<div class="price-card notranslate"><p style="margin:0; color:#ef4444; font-weight:bold;">💰 1人あたりの原価</p><h1 style="margin:5px 0; color:#ef4444; font-size: 2.5rem;">{final_cost:,.2f} 円</h1><p style="margin:0; font-size: 0.9rem;">(総額 {total_material_cost:,.0f}円 ÷ {serving_count}人分)</p></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="price-card notranslate"><p style="margin:0; color:#ef4444; font-weight:bold;">💰 1人あたりの原価</p><h1 style="margin:5px 0; color:#ef4444; font-size: 2.2rem;">{final_cost:,.2f} 円</h1><p style="margin:0; font-size: 0.9rem;">(総額 {total_material_cost:,.0f}円 ÷ {serving_count}人分)</p></div>""", unsafe_allow_html=True)
 
     st.write(" ")
     st.subheader("📸 結果を共有する")
