@@ -80,10 +80,7 @@ else:
     st.subheader("📸 結果を共有する")
     
     # 手順：スマホのスクリーンショットを促しつつ、テキストコピーも可能に
-    st.info("💡 スマホの「スクリーンショット」でこの画面を保存してLINEに送るのが一番きれいです！")
-    
-    # コピー用テキストエリア
-    st.text_area("LINE貼り付け用テキスト（コピーして使ってください）", value=summary_text, height=150)
+    st.info("💡 貼り付け用テキスト")
 
     if st.button("🚨 全データをリセット"):
         st.session_state.ingredients = []
