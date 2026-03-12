@@ -10,10 +10,10 @@ def auto_save_and_load():
     js_code = """
     <script>
     window.saveToBr = (data) => {
-        localStorage.setItem('bunkasai_data_v8', JSON.stringify(data));
+        localStorage.setItem('bunkasai_data_v9', JSON.stringify(data));
     };
     setTimeout(() => {
-        const saved = localStorage.getItem('bunkasai_data_v8');
+        const saved = localStorage.getItem('bunkasai_data_v9');
         if (saved) {
             const bridge = parent.document.querySelector('textarea[aria-label="bridge_area"]');
             if (bridge && !bridge.value) {
@@ -30,36 +30,39 @@ def save_trigger(data):
     js_code = f"<script>window.saveToBr({json.dumps(data)});</script>"
     components.html(js_code, height=0)
 
-# 3. CSS: ラベルの非表示と適切な余白設定
+# 3. CSS: 高さを揃えるための究極の調整
 st.markdown("""
     <style>
-    /* 全体的なフォントと余白 */
-    .main-title { font-size: 1.6rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 15px; }
+    .main-title { font-size: 1.6rem !important; text-align: center; color: #3b82f6; font-weight: 900; margin-bottom: 20px; }
     .section-title { font-size: 1.2rem !important; font-weight: 800; border-bottom: 3px solid #3b82f6; display: inline-block; margin-top: 10px; margin-bottom: 15px; }
     
-    /* フォームの枠と余白 */
+    /* 独自のラベルスタイル */
+    .custom-label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 5px;
+        color: #475569;
+    }
+    @media (prefers-color-scheme: dark) { .custom-label { color: #cbd5e1; } }
+
+    /* フォームの枠 */
     .custom-form { 
-        border: 1px solid #e2e8f0; padding: 25px; border-radius: 15px; background-color: #f8fafc; margin-bottom: 20px;
+        border: 1px solid #e2e8f0; padding: 20px; border-radius: 15px; background-color: #f8fafc; margin-bottom: 20px;
     }
-    @media (prefers-color-scheme: dark) { 
-        .custom-form { border-color: #334155; background-color: #1e293b; }
-    }
+    @media (prefers-color-scheme: dark) { .custom-form { border-color: #334155; background-color: #1e293b; } }
 
-    /* 単位選択のラベルを完全に消してスペースを詰める */
-    div[data-testid="stColumn"]:nth-child(2) label {
-        display: none !important;
-    }
-
-    /* 項目間の程よいスペース */
-    .stNumberInput, .stTextInput, .stRadio {
-        margin-bottom: 15px !important;
-    }
-
-    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3rem; }
+    /* 入力パーツ間の余白を統一 */
+    .element-container { margin-bottom: 0px !important; }
+    .stNumberInput, .stTextInput { margin-bottom: 10px !important; }
+    
+    /* ボタンデザイン */
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; background-color: #3b82f6; color: white !important; height: 3rem; margin-top: 10px; }
+    
+    /* 価格カード */
     .price-card { background-color: #fef2f2; padding: 20px; border-radius: 15px; border: 2px solid #ef4444; text-align: center; }
     @media (prefers-color-scheme: dark) { .price-card { background-color: #450a0a; } }
     
-    /* 隠しエリア */
+    /* ブリッジエリアを隠す */
     div[data-testid="stTextArea"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -84,31 +87,46 @@ st.markdown('<div class="section-title">① 材料を登録・編集する</div>
 with st.expander("➕ 新しい材料を追加する", expanded=not st.session_state.ingredients):
     st.markdown('<div class="custom-form">', unsafe_allow_html=True)
     
-    name = st.text_input("材料名", placeholder="例：鶏もも肉")
+    # --- 材料名 ---
+    st.markdown('<p class="custom-label">材料名</p>', unsafe_allow_html=True)
+    name = st.text_input("name_input", placeholder="例：鶏もも肉", label_visibility="collapsed")
     
-    col_vol, col_unit = st.columns([2, 1])
-    # 単位のラベルをCSSで消すため、横に並べる
-    selected_unit = col_unit.selectbox("単位（非表示ラベル）", ["個", "本", "袋", "g", "kg", "ml", "l"])
+    # --- 内容量と単位の横並び ---
+    col_vol, col_unit = st.columns([2.5, 1])
     
-    if selected_unit in ["個", "本", "袋"]:
-        vol = col_vol.number_input(f"内容量（{selected_unit}数）", min_value=1, value=10, step=1)
-    else:
-        vol = col_vol.number_input(f"内容量（総量）", min_value=0.1, value=1000.0, step=0.1)
+    with col_vol:
+        st.markdown('<p class="custom-label">内容量</p>', unsafe_allow_html=True)
+        # 単位の取得を先に行うための工夫
+        pass 
+
+    with col_unit:
+        st.markdown('<p class="custom-label">単位</p>', unsafe_allow_html=True)
+        selected_unit = st.selectbox("unit_select", ["個", "本", "袋", "g", "kg", "ml", "l"], label_visibility="collapsed")
     
+    # 再度 col_vol に戻って数値入力を配置（これで高さが完璧に揃う）
+    with col_vol:
+        if selected_unit in ["個", "本", "袋"]:
+            vol = st.number_input("vol_input", min_value=1, value=10, step=1, label_visibility="collapsed")
+        else:
+            vol = st.number_input("vol_input", min_value=0.1, value=1000.0, step=0.1, label_visibility="collapsed")
+    
+    st.markdown('<p class="custom-label" style="margin-top:10px;">価格の入力方法</p>', unsafe_allow_html=True)
     price_mode = st.radio(
-        "価格の入力方法", 
+        "mode_select", 
         ["総額で入力", f"1{selected_unit}あたりの価格で入力"], 
-        horizontal=True
+        horizontal=True,
+        label_visibility="collapsed"
     )
     
     if "総額" in price_mode:
-        price = st.number_input("購入総額(円)", min_value=0, value=500, step=1)
+        st.markdown('<p class="custom-label">購入総額 (円)</p>', unsafe_allow_html=True)
+        price = st.number_input("price_input", min_value=0, value=500, step=1, label_visibility="collapsed")
     else:
-        u_price = st.number_input(f"1{selected_unit}あたりの価格(円)", min_value=0.0, value=10.0, step=0.1)
+        st.markdown(f'<p class="custom-label">1{selected_unit}あたりの価格 (円)</p>', unsafe_allow_html=True)
+        u_price = st.number_input("u_price_input", min_value=0.0, value=10.0, step=0.1, label_visibility="collapsed")
         price = int(u_price * vol)
         st.info(f"💡 自動計算された総額: {price:,} 円")
 
-    st.write("") # 少し余白
     if st.button("材料リストに追加"):
         if name:
             st.session_state.ingredients.append({"name": name, "vol": float(vol), "price": int(price), "unit": selected_unit})
@@ -121,14 +139,14 @@ with st.expander("➕ 新しい材料を追加する", expanded=not st.session_s
 if st.session_state.ingredients:
     with st.expander("📝 登録済みの材料を編集・削除"):
         for i, item in enumerate(st.session_state.ingredients):
-            c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 0.5])
-            new_name = c1.text_input("名前", value=item['name'], key=f"e_n_{i}")
+            c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 0.8, 0.5])
+            new_name = c1.text_input(f"n_{i}", value=item['name'], key=f"e_n_{i}", label_visibility="collapsed")
             if item['unit'] in ["個", "本", "袋"]:
-                new_vol = c2.number_input("量", value=int(item['vol']), key=f"e_v_{i}", step=1)
+                new_vol = c2.number_input(f"v_{i}", value=int(item['vol']), key=f"e_v_{i}", step=1, label_visibility="collapsed")
             else:
-                new_vol = c2.number_input("量", value=float(item['vol']), key=f"e_v_{i}", step=0.1)
-            new_price = c3.number_input("単価", value=int(item['price']), key=f"e_p_{i}", step=1)
-            c4.write(f"\n{item['unit']}")
+                new_vol = c2.number_input(f"v_{i}", value=float(item['vol']), key=f"e_v_{i}", step=0.1, label_visibility="collapsed")
+            new_price = c3.number_input(f"p_{i}", value=int(item['price']), key=f"e_p_{i}", step=1, label_visibility="collapsed")
+            c4.markdown(f'<p style="margin-top:10px;">{item["unit"]}</p>', unsafe_allow_html=True)
             if c5.button("❌", key=f"d_{i}"):
                 st.session_state.ingredients.pop(i)
                 save_trigger(st.session_state.ingredients)
@@ -141,12 +159,13 @@ st.markdown('<div class="section-title">② 原価を計算する</div>', unsafe
 if not st.session_state.ingredients:
     st.info("材料を登録してください。")
 else:
-    mode = st.radio("計算モード", ["1人あたりの使用量で計算", "まとめてモード"], horizontal=True)
+    mode = st.radio("calc_mode", ["1人あたりの使用量で計算", "まとめてモード"], horizontal=True, label_visibility="collapsed")
     total_material_cost = 0.0
     line_details = ""
     
     if mode == "まとめてモード":
-        serving_count = st.number_input("合計何人分作る？", min_value=1, value=50)
+        st.markdown('<p class="custom-label">合計何人分作る？</p>', unsafe_allow_html=True)
+        serving_count = st.number_input("count_input", min_value=1, value=50, label_visibility="collapsed")
         for i, item in enumerate(st.session_state.ingredients):
             st.markdown(f'<b>・{item["name"]}</b> ({item["vol"]}{item["unit"]})', unsafe_allow_html=True)
             total_material_cost += float(item['price'])
@@ -160,12 +179,12 @@ else:
             u_p = item['price'] / item['vol']
             if item['unit'] in ["個", "本", "袋"]:
                 col_i, col_f = st.columns(2)
-                iv = col_i.selectbox("整数", range(int(item['vol']) + 1), key=f"int_{i}")
-                fk = col_f.selectbox("端数", list(FRACTIONS.keys()), key=f"frac_{i}")
+                iv = col_i.selectbox(f"i_{i}", range(int(item['vol']) + 1), key=f"int_{i}", label_visibility="collapsed")
+                fk = col_f.selectbox(f"f_{i}", list(FRACTIONS.keys()), key=f"frac_{i}", label_visibility="collapsed")
                 used = float(iv) + FRACTIONS[fk]
                 used_l = f"{iv}と{fk}" if FRACTIONS[fk] > 0 else f"{iv}"
             else:
-                used = st.number_input(f"使用量 ({item['unit']})", key=f"ind_{i}", min_value=0.0, max_value=float(item['vol']), step=0.1)
+                used = st.number_input(f"使用量 ({item['unit']})", key=f"ind_{i}", min_value=0.0, max_value=float(item['vol']), step=0.1, label_visibility="collapsed")
                 used_l = str(used)
             item_c = used * u_p
             total_material_cost += item_c
